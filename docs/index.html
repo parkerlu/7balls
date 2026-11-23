@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>双色球可预测性研究</title>
+<meta name="description" content="用 2003 年至今的全部双色球开奖数据，检验号码是否可预测、开奖是否回避热门号码，并在每期开奖前公开存档预测。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --ink:#172033; --muted:#5E6779; --rule:#D6DBE3;
+  --red:#C8102E; --red-soft:#F6D9DD; --blue:#1F4FD1; --blue-soft:#D9E2FA; --base:#8A93A4;
+  --good:#1D7A4C; --warn:#A35B00;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12151C; --surface:#1A1F29; --ink:#E8ECF3; --muted:#9AA3B4; --rule:#2C3342;
+    --red:#F0525E; --red-soft:#3A1F26; --blue:#5F84F5; --blue-soft:#1E2A4A; --base:#6E7789;
+    --good:#4CC38A; --warn:#E5A44B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12151C; --surface:#1A1F29; --ink:#E8ECF3; --muted:#9AA3B4; --rule:#2C3342;
+  --red:#F0525E; --red-soft:#3A1F26; --blue:#5F84F5; --blue-soft:#1E2A4A; --base:#6E7789;
+  --good:#4CC38A; --warn:#E5A44B;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.75 "Noto Sans SC",system-ui,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+h1,h2,h3{font-family:"Noto Serif SC",serif;line-height:1.3;margin:0}
+h1{font-size:clamp(30px,5vw,46px);font-weight:900;letter-spacing:.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:12px}
+h3{font-size:18px;font-weight:600;margin:24px 0 8px}
+p{margin:0 0 12px;max-width:68ch}
+.num{font-family:"Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+a{color:var(--blue)}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+header{padding:48px 0 24px}
+header .sub{font-size:18px;color:var(--muted);margin-top:8px}
+section{padding:40px 0;border-top:1px solid var(--rule)}
+
+/* 球阵 */
+.field{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:24px 20px}
+.field-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;align-items:baseline;margin-bottom:16px}
+.issue{font-size:44px;font-weight:700;line-height:1}
+.balls{display:grid;gap:14px 8px;margin:8px 0 24px}
+.balls.red{grid-template-columns:repeat(11,minmax(0,1fr))}
+.balls.blue{grid-template-columns:repeat(8,minmax(0,1fr))}
+.ball{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:default;position:relative}
+.orb{width:min(52px,100%);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+  font:600 20px/1 "Barlow Condensed",sans-serif;border:2px solid transparent;transition:transform .15s}
+.red .orb{background:var(--red-soft);color:var(--red)}
+.blue .orb{background:var(--blue-soft);color:var(--blue)}
+.red .pos .orb{background:var(--red);color:#fff}
+.blue .pos .orb{background:var(--blue);color:#fff}
+.neg .orb{background:transparent;border:2px dashed var(--base);color:var(--muted)}
+.ball:hover .orb{transform:scale(1.08)}
+.pct{font:500 14px/1 "Barlow Condensed",sans-serif;color:var(--muted)}
+.dev{width:36px;height:6px;position:relative}
+.dev::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--base)}
+.dev i{position:absolute;top:1px;height:4px;border-radius:2px;background:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:14px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:50%;display:inline-block}
+
+.picks{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+.pick{border-radius:12px;padding:16px 18px;background:var(--bg)}
+.pick h3{margin:0 0 6px;font-size:17px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  font:600 17px/1 "Barlow Condensed",sans-serif}
+.chip.r{background:var(--red);color:#fff}.chip.b{background:var(--blue);color:#fff}
+.chip.nr{border:2px dashed var(--red);color:var(--red)}.chip.nb{border:2px dashed var(--blue);color:var(--blue)}
+.chip.dim{background:transparent;border:1px solid var(--rule);color:var(--muted)}
+.chip.hit{outline:2px solid var(--ink);outline-offset:1px}
+.proof{margin-top:16px;font-size:13px;color:var(--muted);word-break:break-all}
+
+/* 结论 */
+.verdict{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.v{border-left:3px solid var(--rule);padding:4px 0 4px 14px}
+.v b{display:block;font:700 34px/1.1 "Barlow Condensed",sans-serif}
+.v span{font-size:14px;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:500;color:var(--muted)}
+td.num{font-size:16px}
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--rule);border-radius:10px;margin:12px 0}
+.sig{color:var(--good);font-weight:700}
+.ns{color:var(--muted)}
+.official td:first-child::after{content:"正式";margin-left:6px;font-size:12px;padding:1px 6px;border-radius:8px;background:var(--blue-soft);color:var(--blue)}
+
+/* 图表 */
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px;margin:12px 0;position:relative}
+.chart svg{display:block;width:100%;height:auto}
+.chart text{fill:var(--muted);font:12px "Noto Sans SC",sans-serif}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:13px;line-height:1.5;
+  padding:6px 10px;border-radius:6px;opacity:0;transition:opacity .1s;white-space:nowrap;z-index:2}
+details{margin:8px 0}
+summary{cursor:pointer;color:var(--blue);font-size:14px}
+footer{padding:32px 0 56px;color:var(--muted);font-size:14px;border-top:1px solid var(--rule)}
+.empty{padding:20px;color:var(--muted)}
+
+@media (max-width:720px){
+  .balls.red{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .balls.blue{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .picks,.verdict{grid-template-columns:1fr}
+  .issue{font-size:36px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>双色球可预测性研究</h1>
+  <p class="sub">用 2003 年以来的全部开奖记录检验两件事：号码能不能预测，开奖是否回避热门号码。每期开奖前，预测会公开存档到 GitHub，事后无法修改。</p>
+</header>
+
+<main>
+<div class="field" id="field"><div class="empty">正在读取数据…</div></div>
+
+<section id="verdict-sec">
+  <h2>目前的结论</h2>
+  <div id="verdict"></div>
+</section>
+
+<section>
+  <h2>历史回测</h2>
+  <p>每期都只用此前的数据预测，再与"每个号码等概率"的随机基线做配对检验。2003–2018 年用于挑选正式模型，2019 年以后作为留出测试，只看一次。p &lt; 0.05 并且同时跑赢基线，才算有效。</p>
+  <div class="tbl"><table id="bt"></table></div>
+  <p class="muted" style="font-size:14px">对数损失增益：正值表示比随机猜得更准。正向命中：概率最高的 6 个红球平均命中几个。反向命中：概率最低的 10 个红球平均误开几个，越少越好。蓝球命中：概率最高的 1 个蓝球的命中率。</p>
+</section>
+
+<section>
+  <h2>开奖公正性检验</h2>
+  <p>如果开奖号码被刻意挑选成"很少有人买"的组合，一等奖中奖注数就应该长期低于按销量推算的期望值。下图是每年实际开出的一等奖注数，与随机开奖时的期望值对比。</p>
+  <div class="legend" style="margin-top:8px"><span><i class="sw" style="background:var(--blue);border-radius:3px"></i>实际一等奖注数</span><span><i class="sw" style="background:var(--base);height:3px;border-radius:2px;width:16px"></i>随机开奖的期望值</span></div>
+  <div class="chart" id="jp"></div>
+  <details><summary>查看逐年数据表</summary><div class="tbl"><table id="jpt"></table></div></details>
+  <div id="audit"></div>
+</section>
+
+<section>
+  <h2>前瞻记录</h2>
+  <p>开奖前生成、开奖后核对的预测。每条记录都能在 GitHub 上查到提交时间和 SHA-256 校验值，这一部分是检验可预测性最可靠的证据。</p>
+  <div class="tbl"><table id="pro"></table></div>
+</section>
+
+<section>
+  <h2>方法与局限</h2>
+  <p>数据来自 500 彩票网历史开奖表，共 <span id="nd"></span> 期，包括开奖号码、销售额，以及一、二等奖的注数。模型包括热号频率、冷号遗漏、逻辑回归和梯度提升树，特征有多窗口出现频率、遗漏期数、上期是否开出和号码本身。</p>
+  <p>一等奖空奖期数偏多，是因为彩民集中购买相同号码（同号投注、倍投），中奖注数比泊松分布更分散。空奖多不能单独当作操控的证据，长期总注数才能。</p>
+  <p>本研究无法检验"开奖视频与公布结果不一致"这类说法，因为没有逐期的原始视频数据。如果有具体的期号，可以把那几期单独拿出来分析。</p>
+  <p>本站只用于学术研讨，不构成购彩建议。双色球的返奖率约为 50%，长期购买的期望收益为负。</p>
+</section>
+</main>
+
+<footer>数据更新于 <span id="upd"></span>。源码与预测存档：<a href="https://github.com/parkerlu/7balls">github.com/parkerlu/7balls</a></footer>
+</div>
+
+<script>
+const REPO = "https://github.com/parkerlu/7balls";
+const $ = s => document.querySelector(s);
+const pct = (x, d = 1) => (x * 100).toFixed(d) + "%";
+const pv = p => p < 0.001 ? "<0.001" : p.toFixed(3);
+const sig = (p, good) => (p < 0.05 && good) ? "sig" : "ns";
+const fmt = n => n.toLocaleString("zh-CN");
+const zh = d => { const [y, m, dd] = d.split("-"); return `${+m}月${+dd}日`; };
+
+fetch("data.json").then(r => r.json()).then(render).catch(() => {
+  $("#field").innerHTML = '<div class="empty">无法读取 data.json。请在项目根目录运行 <code>python -m ssq.publish</code> 生成数据后刷新。</div>';
+});
+
+function render(D) {
+  const N = D.next, P = N.picks;
+  $("#upd").textContent = new Date(D.updated_at).toLocaleString("zh-CN");
+  $("#nd").textContent = fmt(D.audit.n);
+
+  const ballGrid = (probs, kind, base, pos, neg) => probs.map((p, i) => {
+    const n = i + 1, cls = pos.includes(n) ? "pos" : neg.includes(n) ? "neg" : "";
+    const d = (p - base) / base;                 // 相对偏离
+    const w = Math.min(Math.abs(d) / 0.08, 1) * 18;
+    const bar = d >= 0 ? `left:18px;width:${w}px` : `left:${18 - w}px;width:${w}px`;
+    const tag = cls === "pos" ? "正向选中" : cls === "neg" ? "反向排除" : "";
+    return `<div class="ball ${cls}" title="${String(n).padStart(2, "0")} 号：${pct(p, 2)}（基线 ${pct(base, 2)}，${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)}%）${tag ? "，" + tag : ""}">
+      <div class="orb">${String(n).padStart(2, "0")}</div><div class="pct">${pct(p)}</div><div class="dev"><i style="${bar}"></i></div></div>`;
+  }).join("");
+
+  $("#field").innerHTML = `
+    <div class="field-head">
+      <div><div class="muted" style="font-size:14px">下一期预测</div><div class="issue num">第 ${N.issue} 期</div></div>
+      <div class="muted">${zh(N.draw_date)}开奖，使用截至第 ${N.data_through} 期的数据</div>
+    </div>
+    <div class="legend" style="margin-bottom:8px">
+      <span><i class="sw" style="background:var(--red)"></i>正向选号</span>
+      <span><i class="sw" style="border:2px dashed var(--base)"></i>反向排除</span>
+      <span>球下的短条：相对随机基线的偏离，中线为基线</span>
+    </div>
+    <h3 style="margin-top:12px">红球，基线 ${pct(6 / 33)}</h3>
+    <div class="balls red">${ballGrid(N.red, "red", 6 / 33, P.pos_red, P.neg_red)}</div>
+    <h3>蓝球，基线 ${pct(1 / 16, 2)}</h3>
+    <div class="balls blue">${ballGrid(N.blue, "blue", 1 / 16, [P.pos_blue], P.neg_blue)}</div>
+    <div class="picks">
+      <div class="pick"><h3>正向：最可能开出</h3>
+        <div class="chips">${P.pos_red.map(n => `<span class="chip r">${n}</span>`).join("")}<span class="chip b">${P.pos_blue}</span></div>
+        <p class="muted" style="font-size:14px;margin:8px 0 0">蓝球前三：${P.pos_blue3.join("、")}</p></div>
+      <div class="pick"><h3>反向：最不可能开出</h3>
+        <div class="chips">${P.neg_red.map(n => `<span class="chip nr">${n}</span>`).join("")}</div>
+        <div class="chips" style="margin-top:6px">${P.neg_blue.map(n => `<span class="chip nb">${n}</span>`).join("")}</div></div>
+    </div>
+    <div class="proof">生成时间 ${new Date(N.generated_at).toLocaleString("zh-CN")}，模型为逻辑回归（预注册），SHA-256 ${N.sha256}。
+      <a href="${REPO}/commits/main/predictions/${N.issue}.json">在 GitHub 查看存档的提交时间</a></div>`;
+
+  // 结论
+  const off = D.backtest.find(r => r.name === D.official), T = off.test;
+  const anySig = D.backtest.filter(r => r.name !== "uniform").some(r => r.test.red_ll.p < 0.05 || r.test.blue_ll.p < 0.05);
+  const A = D.audit;
+  $("#verdict").innerHTML = `
+    <p>${anySig ? "有模型在留出测试中显著跑赢随机基线，需要前瞻记录进一步确认。" :
+      `${D.meta.n_models} 个模型在 ${T.red_ll ? fmt(T.n) : ""} 期留出测试中，没有一个显著跑赢随机基线。按现有数据，号码不可预测。`}
+      一等奖长期总注数与随机开奖的期望值一致，没有发现"刻意避开热门号码"的痕迹。</p>
+    <div class="verdict">
+      <div class="v"><b>${T.red_ll.gain_pct >= 0 ? "+" : ""}${T.red_ll.gain_pct.toFixed(3)}%</b><span>正式模型红球预测改进，p = ${pv(T.red_ll.p)}</span></div>
+      <div class="v"><b>${T.top6.value.toFixed(2)} / ${T.top6.base.toFixed(2)}</b><span>正向 6 码平均命中，模型对随机</span></div>
+      <div class="v"><b>${A.first_ratio.toFixed(3)}</b><span>一等奖实际/期望，95% 区间 ${A.first_ratio_ci.map(x => x.toFixed(2)).join("–")}，1 表示完全吻合</span></div>
+    </div>`;
+
+  // 回测表
+  const cell = (m, k, good) => `<td class="num">${m[k].value.toFixed(3)}<span class="${sig(m[k].p, good)}" style="font-size:12px"> p ${pv(m[k].p)}</span></td>`;
+  $("#bt").innerHTML = `<thead><tr><th>模型</th><th>红球增益 (验证)</th><th>红球增益 (测试)</th><th>蓝球增益 (测试)</th><th>正向命中 /${off.test.top6.base.toFixed(2)}</th><th>反向命中 /${off.test.bot10.base.toFixed(2)}</th><th>蓝球命中 /${pct(1 / 16)}</th></tr></thead><tbody>` +
+    D.backtest.map(r => {
+      const g = (x) => `<td class="num">${x.gain_pct >= 0 ? "+" : ""}${x.gain_pct.toFixed(3)}%<span class="${sig(x.p, x.gain_pct > 0)}" style="font-size:12px"> p ${pv(x.p)}</span></td>`;
+      if (r.name === "uniform") return `<tr><td>${r.label}</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">${r.test.top6.value.toFixed(3)}</td><td class="num">${r.test.bot10.value.toFixed(3)}</td><td class="num">${pct(r.test.b_top1.value)}</td></tr>`;
+      return `<tr class="${r.name === D.official ? "official" : ""}"><td>${r.label}</td>${g(r.val.red_ll)}${g(r.test.red_ll)}${g(r.test.blue_ll)}
+        ${cell(r.test, "top6", r.test.top6.value > r.test.top6.base)}${cell(r.test, "bot10", r.test.bot10.value < r.test.bot10.base)}
+        <td class="num">${pct(r.test.b_top1.value)}<span class="${sig(r.test.b_top1.p, true)}" style="font-size:12px"> p ${pv(r.test.b_top1.p)}</span></td></tr>`;
+    }).join("") + "</tbody>";
+
+  jackpotChart(A.by_year);
+  $("#jpt").innerHTML = `<thead><tr><th>年份</th><th>期数</th><th>一等奖实际</th><th>期望</th><th>空奖实际</th><th>空奖期望 (泊松)</th><th>二等奖实际</th><th>期望</th></tr></thead><tbody>` +
+    A.by_year.map(y => `<tr><td>${y.year}</td><td class="num">${y.draws}</td><td class="num">${fmt(y.first_obs)}</td><td class="num">${fmt(Math.round(y.first_exp))}</td><td class="num">${y.zero_obs}</td><td class="num">${y.zero_exp.toFixed(1)}</td><td class="num">${fmt(y.second_obs)}</td><td class="num">${fmt(Math.round(y.second_exp))}</td></tr>`).join("") + "</tbody>";
+
+  $("#audit").innerHTML = `
+    <div class="verdict">
+      <div class="v"><b>${fmt(A.first.obs)} / ${fmt(Math.round(A.first.exp))}</b><span>一等奖总注数，实际对期望</span></div>
+      <div class="v"><b>${fmt(A.second.obs)} / ${fmt(Math.round(A.second.exp))}</b><span>二等奖总注数，实际对期望</span></div>
+      <div class="v"><b>${A.first.zero_obs} / ${A.first.zero_exp.toFixed(0)}</b><span>空奖期数，实际对泊松期望。偏多，见下方说明</span></div>
+    </div>
+    <h3>开奖号码是否回避热门形态</h3>
+    <p>彩民偏爱生日号、连号、吉利号。如果开奖刻意避开这些号码，它们出现的比例会显著低于随机模拟（20 万次）的结果。</p>
+    <div class="tbl"><table><thead><tr><th>形态</th><th>实际出现</th><th>随机期望</th><th>"偏少"检验 p</th></tr></thead><tbody>${
+      A.patterns.map(p => `<tr><td>${p.name}</td><td class="num">${pct(p.obs)}</td><td class="num">${pct(p.exp)}</td><td class="num ${p.p_less < 0.05 ? "sig" : "ns"}">${pv(p.p_less)}</td></tr>`).join("")}
+      <tr><td>33 个红球出现次数是否均匀 (卡方)</td><td colspan="2" class="num">χ² = ${A.chi_red.stat.toFixed(1)}</td><td class="num ns">${pv(A.chi_red.p)}</td></tr>
+      <tr><td>16 个蓝球出现次数是否均匀 (卡方)</td><td colspan="2" class="num">χ² = ${A.chi_blue.stat.toFixed(1)}</td><td class="num ns">${pv(A.chi_blue.p)}</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:14px">一等奖注数的方差是均值的 ${A.first_dispersion.toFixed(1)} 倍，中位数只有期望值的 ${(A.first_median_ratio * 100).toFixed(0)}%，但总量与期望值吻合。这说明大部分期次中奖的人偏少，少数期次开出热门号后中奖注数暴涨，比如 2019052 期一期开出 153 注。这是彩民扎堆投注的特征。如果是刻意挑选冷门组合，总量会明显偏低。</p>`;
+
+  // 前瞻记录
+  const rows = D.prospective.slice().reverse();
+  const drawn = rows.filter(r => r.drawn);
+  const head = `<thead><tr><th>期号</th><th>生成时间</th><th>正向选号</th><th>开奖号码</th><th>正向命中</th><th>反向误杀</th><th>蓝球</th></tr></thead>`;
+  const summary = drawn.length ? `<tr><td>累计 ${drawn.length} 期</td><td></td><td></td><td></td>
+      <td class="num">${(drawn.reduce((a, r) => a + r.pos_hits, 0) / drawn.length).toFixed(2)} / 1.09</td>
+      <td class="num">${(drawn.reduce((a, r) => a + r.neg_hits, 0) / drawn.length).toFixed(2)} / 1.82</td>
+      <td class="num">${pct(drawn.filter(r => r.pos_blue_hit).length / drawn.length)} / 6.3%</td></tr>` : "";
+  $("#pro").innerHTML = head + "<tbody>" + rows.map(r => `<tr>
+      <td><a href="${REPO}/commits/main/predictions/${r.issue}.json">${r.issue}</a></td>
+      <td class="num">${new Date(r.generated_at).toLocaleString("zh-CN")}</td>
+      <td><div class="chips">${r.picks.pos_red.map(n => `<span class="chip ${r.drawn && r.reds.includes(n) ? "r hit" : "dim"}">${n}</span>`).join("")}<span class="chip ${r.drawn && r.pos_blue_hit ? "b hit" : "dim"}">${r.picks.pos_blue}</span></div></td>
+      <td>${r.drawn ? r.reds.join(" ") + " + " + r.blue : `<span class="muted">${zh(r.draw_date)}开奖</span>`}</td>
+      <td class="num">${r.drawn ? r.pos_hits : ""}</td><td class="num">${r.drawn ? r.neg_hits : ""}</td><td>${r.drawn ? (r.pos_blue_hit ? "命中" : "未中") : ""}</td></tr>`).join("") + summary + "</tbody>";
+}
+
+function jackpotChart(Y) {
+  const W = 960, H = 300, m = { l: 48, r: 12, t: 12, b: 28 };
+  const max = Math.max(...Y.map(y => Math.max(y.first_obs, y.first_exp))) * 1.08;
+  const bw = (W - m.l - m.r) / Y.length, y = v => m.t + (H - m.t - m.b) * (1 - v / max);
+  const ticks = [0, 500, 1000, 1500].filter(t => t < max);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每年一等奖实际注数与期望值">`;
+  ticks.forEach(t => s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rule)"/><text x="${m.l - 8}" y="${y(t) + 4}" text-anchor="end">${t}</text>`);
+  Y.forEach((d, i) => {
+    const x = m.l + i * bw, w = Math.max(bw - 6, 2), top = y(d.first_obs), base = y(0);
+    s += `<path d="M${x + 3},${base} V${top + 4} q0,-4 4,-4 h${w - 8} q4,0 4,4 V${base} Z" fill="var(--blue)"/>`;
+    s += `<line x1="${x + 1}" x2="${x + bw - 1}" y1="${y(d.first_exp)}" y2="${y(d.first_exp)}" stroke="var(--base)" stroke-width="3" stroke-linecap="round"/>`;
+    if (i % 2 === 0 || bw > 50) s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${d.year.slice(2)}</text>`;
+    s += `<rect x="${x}" y="${m.t}" width="${bw}" height="${H - m.t - m.b}" fill="transparent" data-i="${i}"/>`;
+  });
+  $("#jp").innerHTML = s + `</svg><div class="tip"></div>`;
+  const tip = $("#jp .tip"), box = $("#jp");
+  box.querySelectorAll("rect[data-i]").forEach(r => {
+    r.addEventListener("mousemove", e => {
+      const d = Y[+r.dataset.i], b = box.getBoundingClientRect();
+      tip.innerHTML = `${d.year} 年，${d.draws} 期<br>实际 ${fmt(d.first_obs)} 注，期望 ${fmt(Math.round(d.first_exp))} 注<br>比值 ${(d.first_obs / d.first_exp).toFixed(2)}`;
+      tip.style.opacity = 1;
+      const x = e.clientX - b.left + 12;
+      tip.style.left = Math.min(x, b.width - tip.offsetWidth - 4) + "px";
+      tip.style.top = (e.clientY - b.top - 10) + "px";
+    });
+    r.addEventListener("mouseleave", () => tip.style.opacity = 0);
+  });
+}
+</script>
+</body>
+</html>
