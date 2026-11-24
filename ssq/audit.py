@@ -25,6 +25,7 @@ def _features(reds: np.ndarray, blue: np.ndarray) -> dict[str, np.ndarray]:
 
 def run(seed: int = 7) -> dict:
     df = load()
+    df = df[df["sales"] > 0].reset_index(drop=True)   # 刚开奖、销量和中奖注数尚未公布的期次不参与检验
     R, B = matrices(df)
     N = len(df)
 
