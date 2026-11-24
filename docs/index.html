@@ -60,6 +60,16 @@ section{padding:40px 0;border-top:1px solid var(--rule)}
 .red .pos .orb{background:var(--red);color:#fff}
 .blue .pos .orb{background:var(--blue);color:#fff}
 .neg .orb{background:transparent;border:2px dashed var(--base);color:var(--muted)}
+.drawn .orb{box-shadow:0 0 0 3px var(--surface),0 0 0 6px var(--ink)}
+.drawn.neg .orb{border-color:var(--ink);color:var(--ink)}
+.flag{font:500 12px/1 "Noto Sans SC",sans-serif;color:var(--ink);height:12px}
+.cmp{margin-top:24px}
+.score{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:12px 0 20px}
+.score div{background:var(--bg);border-radius:10px;padding:12px 14px}
+.score b{display:block;font:700 28px/1.1 "Barlow Condensed",sans-serif}
+.score span{font-size:13px;color:var(--muted)}
+.score .better b{color:var(--good)}.score .worse b{color:var(--warn)}
+@media (max-width:720px){.score{grid-template-columns:1fr 1fr}}
 .ball:hover .orb{transform:scale(1.08)}
 .pct{font:500 14px/1 "Barlow Condensed",sans-serif;color:var(--muted)}
 .dev{width:36px;height:6px;position:relative}
@@ -126,6 +136,7 @@ footer{padding:32px 0 56px;color:var(--muted);font-size:14px;border-top:1px soli
 
 <main>
 <div class="field" id="field"><div class="empty">正在读取数据…</div></div>
+<div class="field cmp" id="cmp" hidden></div>
 
 <section id="verdict-sec">
   <h2>目前的结论</h2>
@@ -184,14 +195,15 @@ function render(D) {
   $("#upd").textContent = new Date(D.updated_at).toLocaleString("zh-CN");
   $("#nd").textContent = fmt(D.audit.n);
 
-  const ballGrid = (probs, kind, base, pos, neg) => probs.map((p, i) => {
-    const n = i + 1, cls = pos.includes(n) ? "pos" : neg.includes(n) ? "neg" : "";
+  const ballGrid = (probs, kind, base, pos, neg, drawn = null) => probs.map((p, i) => {
+    const n = i + 1, cls = (pos.includes(n) ? "pos" : neg.includes(n) ? "neg" : "") + (drawn && drawn.includes(n) ? " drawn" : "");
     const d = (p - base) / base;                 // 相对偏离
     const w = Math.min(Math.abs(d) / 0.08, 1) * 18;
     const bar = d >= 0 ? `left:18px;width:${w}px` : `left:${18 - w}px;width:${w}px`;
-    const tag = cls === "pos" ? "正向选中" : cls === "neg" ? "反向排除" : "";
-    return `<div class="ball ${cls}" title="${String(n).padStart(2, "0")} 号：${pct(p, 2)}（基线 ${pct(base, 2)}，${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)}%）${tag ? "，" + tag : ""}">
-      <div class="orb">${String(n).padStart(2, "0")}</div><div class="pct">${pct(p)}</div><div class="dev"><i style="${bar}"></i></div></div>`;
+    const tag = cls.includes("pos") ? "正向选中" : cls.includes("neg") ? "反向排除" : "";
+    const isDrawn = drawn && drawn.includes(n);
+    return `<div class="ball ${cls}" title="${String(n).padStart(2, "0")} 号：${pct(p, 2)}（基线 ${pct(base, 2)}，${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)}%）${tag ? "，" + tag : ""}${isDrawn ? "，已开出" : ""}">
+      <div class="orb">${String(n).padStart(2, "0")}</div><div class="pct">${pct(p)}</div><div class="dev"><i style="${bar}"></i></div>${drawn ? `<div class="flag">${isDrawn ? "开出" : ""}</div>` : ""}</div>`;
   }).join("");
 
   $("#field").innerHTML = `
@@ -219,8 +231,40 @@ function render(D) {
     <div class="proof">生成时间 ${new Date(N.generated_at).toLocaleString("zh-CN")}，模型为逻辑回归（预注册），SHA-256 ${N.sha256}。
       <a href="${REPO}/commits/main/predictions/${N.issue}.json">在 GitHub 查看存档的提交时间</a></div>`;
 
+  // 上期预测与开奖对比
+  const last = D.prospective.filter(r => r.drawn && r.red).slice(-1)[0];
+  if (last) {
+    const LP = last.picks;
+    const rank = (probs, n) => 1 + probs.filter(q => q > probs[n - 1]).length;
+    const cmpCls = (v, e, higher) => v === e ? "" : ((v > e) === higher ? "better" : "worse");
+    $("#cmp").hidden = false;
+    $("#cmp").innerHTML = `
+      <div class="field-head">
+        <div><div class="muted" style="font-size:14px">上期预测与开奖对比</div><div class="issue num">第 ${last.issue} 期</div></div>
+        <div class="muted">${zh(last.draw_date)}开奖，开奖号码
+          <span class="chips" style="display:inline-flex;vertical-align:middle;margin-left:6px">${last.reds.map(n => `<span class="chip r">${n}</span>`).join("")}<span class="chip b">${last.blue}</span></span></div>
+      </div>
+      <div class="score">
+        <div class="${cmpCls(last.pos_hits, 1.09, true)}"><b>${last.pos_hits} / 6</b><span>正向红球命中，随机期望 1.09</span></div>
+        <div class="${last.pos_blue_hit ? "better" : ""}"><b>${last.pos_blue_hit ? "命中" : "未中"}</b><span>正向蓝球 ${LP.pos_blue}，随机命中率 6.25%</span></div>
+        <div class="${cmpCls(last.neg_hits, 1.82, false)}"><b>${last.neg_hits} / 10</b><span>反向红球误杀，随机期望 1.82，越少越好</span></div>
+        <div class="${last.neg_blue_hit ? "worse" : "better"}"><b>${last.neg_blue_hit ? "误杀" : "未误杀"}</b><span>反向蓝球 ${LP.neg_blue.join("、")}</span></div>
+      </div>
+      <p class="muted" style="font-size:14px">开出号码在模型概率中的排名（红球共 33 名，蓝球共 16 名）：${last.reds.map(n => `${String(n).padStart(2, "0")} 排第 ${rank(last.red, n)}`).join("，")}；蓝球 ${String(last.blue).padStart(2, "0")} 排第 ${rank(last.blue_p, last.blue)}。如果模型有效，开出号码的排名应该系统性靠前。</p>
+      <div class="legend" style="margin-bottom:8px">
+        <span><i class="sw" style="background:var(--red)"></i>正向选号</span>
+        <span><i class="sw" style="border:2px dashed var(--base)"></i>反向排除</span>
+        <span><i class="sw" style="box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)"></i>实际开出</span>
+      </div>
+      <h3 style="margin-top:12px">红球</h3>
+      <div class="balls red">${ballGrid(last.red, "red", 6 / 33, LP.pos_red, LP.neg_red, last.reds)}</div>
+      <h3>蓝球</h3>
+      <div class="balls blue">${ballGrid(last.blue_p, "blue", 1 / 16, [LP.pos_blue], LP.neg_blue, [last.blue])}</div>
+      <p class="muted" style="font-size:13px;margin:0">单期结果主要取决于运气，判断模型是否有效要看下方前瞻记录的累计统计。</p>`;
+  }
+
   // 结论
-  const off = D.backtest.find(r => r.name === D.official), T = off.test;
+  const off =D.backtest.find(r => r.name === D.official), T = off.test;
   const anySig = D.backtest.filter(r => r.name !== "uniform").some(r => r.test.red_ll.p < 0.05 || r.test.blue_ll.p < 0.05);
   const A = D.audit;
   $("#verdict").innerHTML = `
@@ -266,8 +310,8 @@ function render(D) {
   // 前瞻记录
   const rows = D.prospective.slice().reverse();
   const drawn = rows.filter(r => r.drawn);
-  const head = `<thead><tr><th>期号</th><th>生成时间</th><th>正向选号</th><th>开奖号码</th><th>正向命中</th><th>反向误杀</th><th>蓝球</th></tr></thead>`;
-  const summary = drawn.length ? `<tr><td>累计 ${drawn.length} 期</td><td></td><td></td><td></td>
+  const head = `<thead><tr><th>期号</th><th>生成时间</th><th>正向选号</th><th>反向排除</th><th>开奖号码</th><th>正向命中</th><th>反向误杀</th><th>正向蓝球</th></tr></thead>`;
+  const summary = drawn.length ? `<tr><td>累计 ${drawn.length} 期</td><td></td><td></td><td></td><td></td>
       <td class="num">${(drawn.reduce((a, r) => a + r.pos_hits, 0) / drawn.length).toFixed(2)} / 1.09</td>
       <td class="num">${(drawn.reduce((a, r) => a + r.neg_hits, 0) / drawn.length).toFixed(2)} / 1.82</td>
       <td class="num">${pct(drawn.filter(r => r.pos_blue_hit).length / drawn.length)} / 6.3%</td></tr>` : "";
@@ -275,6 +319,7 @@ function render(D) {
       <td><a href="${REPO}/commits/main/predictions/${r.issue}.json">${r.issue}</a></td>
       <td class="num">${new Date(r.generated_at).toLocaleString("zh-CN")}</td>
       <td><div class="chips">${r.picks.pos_red.map(n => `<span class="chip ${r.drawn && r.reds.includes(n) ? "r hit" : "dim"}">${n}</span>`).join("")}<span class="chip ${r.drawn && r.pos_blue_hit ? "b hit" : "dim"}">${r.picks.pos_blue}</span></div></td>
+      <td><div class="chips">${r.picks.neg_red.map(n => `<span class="chip ${r.drawn && r.reds.includes(n) ? "nr hit" : "dim"}">${n}</span>`).join("")}</div></td>
       <td>${r.drawn ? r.reds.join(" ") + " + " + r.blue : `<span class="muted">${zh(r.draw_date)}开奖</span>`}</td>
       <td class="num">${r.drawn ? r.pos_hits : ""}</td><td class="num">${r.drawn ? r.neg_hits : ""}</td><td>${r.drawn ? (r.pos_blue_hit ? "命中" : "未中") : ""}</td></tr>`).join("") + summary + "</tbody>";
 }

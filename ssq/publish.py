@@ -89,6 +89,7 @@ def score_archive(df) -> list[dict]:
             u = 6 / NR
             ll_u = -np.mean(y * np.log(u) + (1 - y) * np.log(1 - u))
             row.update({
+                "red": p["red"], "blue_p": p["blue"],
                 "reds": reds, "blue": d["blue"],
                 "pos_hits": len(set(reds) & set(p["picks"]["pos_red"])),
                 "pos_blue_hit": d["blue"] == p["picks"]["pos_blue"],
