@@ -16,6 +16,8 @@ from .models import ML, NB, NR, Frequency, Uniform, load, matrices
 
 ROOT = Path(__file__).resolve().parent.parent
 PRED = ROOT / "predictions"
+CTRL = PRED / "control"   # 对照模型 (不含号码大小特征), 同样只存不改
+CONTROL = "ml_logreg_nonum"
 DOCS = ROOT / "docs"
 OFFICIAL = "ml_logreg"   # 2003-2018 验证段选出的正式模型, 预注册后不再更改
 DRAW_WEEKDAYS = {1, 3, 6}  # 周二 周四 周日
@@ -41,10 +43,10 @@ def picks(pr: np.ndarray, pb: np.ndarray) -> dict:
     }
 
 
-def make_prediction(df, R, B) -> dict:
+def make_prediction(df, R, B, model=None, name=OFFICIAL) -> dict:
     T = len(df)
     issue, date = next_draw(df["issue"].iloc[-1], df["date"].iloc[-1])
-    official = ML("logreg", retrain=1).fit(R, B)
+    official = (model or ML("logreg", retrain=1)).fit(R, B)
     pr, pb = official.predict(T)
     others = {}
     for m in [Frequency(None), Frequency(100), ML("gbm", retrain=1)]:
@@ -55,7 +57,7 @@ def make_prediction(df, R, B) -> dict:
         "issue": issue, "draw_date": date,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "data_through": df["issue"].iloc[-1],
-        "model": OFFICIAL,
+        "model": name,
         "red": pr.round(5).tolist(), "blue": pb.round(5).tolist(),
         "picks": picks(pr, pb),
     }
@@ -63,19 +65,19 @@ def make_prediction(df, R, B) -> dict:
     return body, others
 
 
-def archive(pred: dict) -> bool:
-    PRED.mkdir(exist_ok=True)
-    f = PRED / f"{pred['issue']}.json"
+def archive(pred: dict, folder: Path = PRED) -> bool:
+    folder.mkdir(parents=True, exist_ok=True)
+    f = folder / f"{pred['issue']}.json"
     if f.exists():
         return False
     f.write_text(json.dumps(pred, ensure_ascii=False, indent=1))
     return True
 
 
-def score_archive(df) -> list[dict]:
+def score_archive(df, folder: Path = PRED) -> list[dict]:
     by_issue = {r["issue"]: r for r in df.to_dict("records")}
     rows = []
-    for f in sorted(PRED.glob("*.json")):
+    for f in sorted(folder.glob("*.json")):
         p = json.loads(f.read_text())
         d = by_issue.get(p["issue"])
         row = {"issue": p["issue"], "draw_date": p["draw_date"], "generated_at": p["generated_at"],
@@ -112,11 +114,15 @@ def main(refetch: bool = True) -> None:
     pred, others = make_prediction(df, R, B)
     new = archive(pred)
     current = json.loads((PRED / f"{pred['issue']}.json").read_text())
+    cpred, _ = make_prediction(df, R, B, ML("logreg", retrain=1, use_num=False), CONTROL)
+    archive(cpred, CTRL)
+    control = json.loads((CTRL / f"{cpred['issue']}.json").read_text())
     recent = df.tail(20).iloc[::-1]
     data = {
         "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "meta": meta, "official": OFFICIAL,
-        "next": current, "others": others,
+        "next": current, "others": others, "control": CONTROL,
+        "control_next": control, "control_prospective": score_archive(df, CTRL),
         "backtest": results, "audit": aud,
         "prospective": score_archive(df),
         "recent": [{"issue": r["issue"], "date": r["date"],

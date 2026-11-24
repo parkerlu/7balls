@@ -89,6 +89,8 @@ section{padding:40px 0;border-top:1px solid var(--rule)}
 .chip.nr{border:2px dashed var(--red);color:var(--red)}.chip.nb{border:2px dashed var(--blue);color:var(--blue)}
 .chip.dim{background:transparent;border:1px solid var(--rule);color:var(--muted)}
 .chip.hit{outline:2px solid var(--ink);outline-offset:1px}
+td .chips{flex-wrap:nowrap;gap:4px}
+td .chip{width:28px;height:28px;font-size:15px}
 .proof{margin-top:16px;font-size:13px;color:var(--muted);word-break:break-all}
 
 /* 结论 */
@@ -162,12 +164,17 @@ footer{padding:32px 0 56px;color:var(--muted);font-size:14px;border-top:1px soli
 <section>
   <h2>前瞻记录</h2>
   <p>开奖前生成、开奖后核对的预测。每条记录都能在 GitHub 上查到提交时间和 SHA-256 校验值，这一部分是检验可预测性最可靠的证据。</p>
+  <h3>正式模型：逻辑回归（预注册）</h3>
   <div class="tbl"><table id="pro"></table></div>
+  <h3>对照模型：逻辑回归，不含号码大小</h3>
+  <p class="muted" style="font-size:14px">从 2026136 期开始记录。两个模型的累计结果放在一起比较，可以看出"小号略多"这个规律对预测有没有帮助。</p>
+  <div class="tbl"><table id="pro2"></table></div>
 </section>
 
 <section>
   <h2>方法与局限</h2>
   <p>数据来自 500 彩票网历史开奖表，共 <span id="nd"></span> 期，包括开奖号码、销售额，以及一、二等奖的注数。模型包括热号频率、冷号遗漏、逻辑回归和梯度提升树，特征有多窗口出现频率、遗漏期数、上期是否开出和号码本身。</p>
+  <p>正式模型的预测总是偏向小号，原因是历史上 23–33 号开出的次数比随机期望少约 2.7%：2003–2018 年少 2.8%，2019 年以来少 2.4%，方向一致。模型的"号码大小"特征学到了这个规律，其他特征基本是噪声，所以每期的正向选号多是小号，反向排除多是 22 号以后的大号。这个差异很小，1 号和 33 号的预测概率只差约 1 个百分点。"23–33"这个分组是看过数据之后才挑出来的，显著性会被高估。另外，彩民偏爱小号，开奖如果刻意回避热门号码，小号应该开得更少，实际情况正好相反。为了对照，网站同时记录一个不含号码大小特征的模型。</p>
   <p>一等奖空奖期数偏多，是因为彩民集中购买相同号码（同号投注、倍投），中奖注数比泊松分布更分散。空奖多不能单独当作操控的证据，长期总注数才能。</p>
   <p>本研究无法检验"开奖视频与公布结果不一致"这类说法，因为没有逐期的原始视频数据。如果有具体的期号，可以把那几期单独拿出来分析。</p>
   <p>本站只用于学术研讨，不构成购彩建议。双色球的返奖率约为 50%，长期购买的期望收益为负。</p>
@@ -228,6 +235,7 @@ function render(D) {
         <div class="chips">${P.neg_red.map(n => `<span class="chip nr">${n}</span>`).join("")}</div>
         <div class="chips" style="margin-top:6px">${P.neg_blue.map(n => `<span class="chip nb">${n}</span>`).join("")}</div></div>
     </div>
+    ${D.control_next ? `<p class="muted" style="font-size:14px;margin:16px 0 0">对照模型（不含号码大小）：正向 ${D.control_next.picks.pos_red.map(n => String(n).padStart(2, "0")).join(" ")} + ${String(D.control_next.picks.pos_blue).padStart(2, "0")}，反向排除 ${D.control_next.picks.neg_red.map(n => String(n).padStart(2, "0")).join(" ")}。正式模型偏向小号的原因见"方法与局限"。</p>` : ""}
     <div class="proof">生成时间 ${new Date(N.generated_at).toLocaleString("zh-CN")}，模型为逻辑回归（预注册），SHA-256 ${N.sha256}。
       <a href="${REPO}/commits/main/predictions/${N.issue}.json">在 GitHub 查看存档的提交时间</a></div>`;
 
@@ -260,6 +268,7 @@ function render(D) {
       <div class="balls red">${ballGrid(last.red, "red", 6 / 33, LP.pos_red, LP.neg_red, last.reds)}</div>
       <h3>蓝球</h3>
       <div class="balls blue">${ballGrid(last.blue_p, "blue", 1 / 16, [LP.pos_blue], LP.neg_blue, [last.blue])}</div>
+      ${(() => { const c = (D.control_prospective || []).find(r => r.issue === last.issue && r.drawn); return c ? `<p class="muted" style="font-size:14px">对照模型这一期：正向红球命中 ${c.pos_hits} 个，蓝球${c.pos_blue_hit ? "命中" : "未中"}，反向误杀 ${c.neg_hits} 个。</p>` : ""; })()}
       <p class="muted" style="font-size:13px;margin:0">单期结果主要取决于运气，判断模型是否有效要看下方前瞻记录的累计统计。</p>`;
   }
 
@@ -308,15 +317,20 @@ function render(D) {
     <p class="muted" style="font-size:14px">一等奖注数的方差是均值的 ${A.first_dispersion.toFixed(1)} 倍，中位数只有期望值的 ${(A.first_median_ratio * 100).toFixed(0)}%，但总量与期望值吻合。这说明大部分期次中奖的人偏少，少数期次开出热门号后中奖注数暴涨，比如 2019052 期一期开出 153 注。这是彩民扎堆投注的特征。如果是刻意挑选冷门组合，总量会明显偏低。</p>`;
 
   // 前瞻记录
-  const rows = D.prospective.slice().reverse();
+  record(D.prospective, "#pro", "predictions");
+  record(D.control_prospective || [], "#pro2", "predictions/control");
+}
+
+function record(list, sel, dir) {
+  const rows = list.slice().reverse();
   const drawn = rows.filter(r => r.drawn);
   const head = `<thead><tr><th>期号</th><th>生成时间</th><th>正向选号</th><th>反向排除</th><th>开奖号码</th><th>正向命中</th><th>反向误杀</th><th>正向蓝球</th></tr></thead>`;
   const summary = drawn.length ? `<tr><td>累计 ${drawn.length} 期</td><td></td><td></td><td></td><td></td>
       <td class="num">${(drawn.reduce((a, r) => a + r.pos_hits, 0) / drawn.length).toFixed(2)} / 1.09</td>
       <td class="num">${(drawn.reduce((a, r) => a + r.neg_hits, 0) / drawn.length).toFixed(2)} / 1.82</td>
       <td class="num">${pct(drawn.filter(r => r.pos_blue_hit).length / drawn.length)} / 6.3%</td></tr>` : "";
-  $("#pro").innerHTML = head + "<tbody>" + rows.map(r => `<tr>
-      <td><a href="${REPO}/commits/main/predictions/${r.issue}.json">${r.issue}</a></td>
+  $(sel).innerHTML = head + "<tbody>" + rows.map(r => `<tr>
+      <td><a href="${REPO}/commits/main/${dir}/${r.issue}.json">${r.issue}</a></td>
       <td class="num">${new Date(r.generated_at).toLocaleString("zh-CN")}</td>
       <td><div class="chips">${r.picks.pos_red.map(n => `<span class="chip ${r.drawn && r.reds.includes(n) ? "r hit" : "dim"}">${n}</span>`).join("")}<span class="chip ${r.drawn && r.pos_blue_hit ? "b hit" : "dim"}">${r.picks.pos_blue}</span></div></td>
       <td><div class="chips">${r.picks.neg_red.map(n => `<span class="chip ${r.drawn && r.reds.includes(n) ? "nr hit" : "dim"}">${n}</span>`).join("")}</div></td>

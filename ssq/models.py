@@ -114,10 +114,12 @@ class Cold:
 class ML:
     """逐号码二分类 (特征: 多窗口频率/遗漏/上期/号码本身), 滚动重训。"""
 
-    def __init__(self, kind="logreg", retrain=100, min_train=150):
-        self.kind, self.retrain, self.min_train = kind, retrain, min_train
-        self.name = f"ml_{kind}"
+    def __init__(self, kind="logreg", retrain=100, min_train=150, use_num=True):
+        self.kind, self.retrain, self.min_train, self.use_num = kind, retrain, min_train, use_num
+        self.name = f"ml_{kind}" + ("" if use_num else "_nonum")
         self.label = {"logreg": "机器学习: 逻辑回归", "gbm": "机器学习: 梯度提升树"}[kind]
+        if not use_num:
+            self.label = "对照: 逻辑回归 (不含号码大小)"
 
     def _model(self):
         if self.kind == "logreg":
@@ -128,6 +130,8 @@ class ML:
     def fit(self, R, B):
         self.R, self.B = R, B
         self.FR, self.FB = features(R), features(B)
+        if not self.use_num:                       # 去掉最后一列"号码大小"
+            self.FR, self.FB = self.FR[:, :, :-1], self.FB[:, :, :-1]
         self.cache = {}
         return self
 
@@ -150,4 +154,4 @@ class ML:
 
 def all_models():
     return [Uniform(), Frequency(None), Frequency(30), Frequency(100), Cold(),
-            ML("logreg"), ML("gbm")]
+            ML("logreg"), ML("gbm"), ML("logreg", use_num=False)]
