@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 .venv/bin/python -m ssq.publish
 git add data predictions docs
 if ! git diff --cached --quiet; then
-  ISSUE=$(ls predictions | sort | tail -1 | sed 's/.json//')
+  ISSUE=$(ls predictions/*.json | sort | tail -1 | xargs basename | sed "s/.json//")
   git commit -q -m "预测 ${ISSUE} 并更新数据"
   git push -q origin main
   echo "已推送: ${ISSUE}"
