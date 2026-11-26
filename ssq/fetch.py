@@ -24,7 +24,17 @@ def _int(s: str) -> int:
 
 
 def fetch() -> list[dict]:
-    r = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+    """全量页面有缓存会滞后, 再按期号范围补抓最近几期并合并。"""
+    rows = {d["issue"]: d for d in _fetch(URL)}
+    last = max(rows)
+    recent = URL.replace("start=03001", f"start={last[2:4]}{int(last[4:]) - 5:03d}" if int(last[4:]) > 5 else f"start={last[2:4]}001")
+    for d in _fetch(recent):
+        rows[d["issue"]] = d
+    return sorted(rows.values(), key=lambda d: d["issue"])
+
+
+def _fetch(url: str) -> list[dict]:
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     r.raise_for_status()
     soup = BeautifulSoup(r.content, "lxml")
     rows = []
