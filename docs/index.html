@@ -162,6 +162,14 @@ footer{padding:32px 0 56px;color:var(--muted);font-size:14px;border-top:1px soli
 </section>
 
 <section>
+  <h2>走势分析</h2>
+  <p>把每期的和值、跨度、奇数个数、大号个数、蓝球号码看作"股价"走势，用均线、动量、MACD、自回归等股票技术分析方法预测下一期，再和"永远猜理论平均值"比较误差。</p>
+  <div class="tbl"><table id="trs"></table></div>
+  <p class="muted" style="font-size:14px">表中是"相比永远猜平均值"的误差变化，正值表示更差。所有走势线与前 1 到 3 期的相关系数都接近 0。奇数个数的自回归误差略低，原因是奇数个数只能取整数，猜 3 比猜理论平均值 3.09 的误差小，与走势无关。</p>
+  <div id="trn"></div>
+</section>
+
+<section>
   <h2>前瞻记录</h2>
   <p>开奖前生成、开奖后核对的预测。每条记录都能在 GitHub 上查到提交时间和 SHA-256 校验值，这一部分是检验可预测性最可靠的证据。</p>
   <h3>正式模型：逻辑回归（预注册）</h3>
@@ -169,6 +177,9 @@ footer{padding:32px 0 56px;color:var(--muted);font-size:14px;border-top:1px soli
   <h3>对照模型：逻辑回归，不含号码大小</h3>
   <p class="muted" style="font-size:14px">从 2026136 期开始记录。两个模型的累计结果放在一起比较，可以看出"小号略多"这个规律对预测有没有帮助。</p>
   <div class="tbl"><table id="pro2"></table></div>
+  <h3>走势模型：10 期均线</h3>
+  <p class="muted" style="font-size:14px">从 2026137 期开始记录。用 10 期均线预测和值、跨度、奇数个数、大号个数，再从全部组合里挑出最符合这些目标的一注。</p>
+  <div class="tbl"><table id="pro3"></table></div>
 </section>
 
 <section>
@@ -237,6 +248,7 @@ function render(D) {
         <div class="chips" style="margin-top:6px">${P.neg_blue.map(n => `<span class="chip nb">${n}</span>`).join("")}</div></div>
     </div>
     ${D.control_next ? `<p class="muted" style="font-size:14px;margin:16px 0 0">对照模型（不含号码大小）：正向 ${D.control_next.picks.pos_red.map(n => String(n).padStart(2, "0")).join(" ")} + ${String(D.control_next.picks.pos_blue).padStart(2, "0")}，反向排除 ${D.control_next.picks.neg_red.map(n => String(n).padStart(2, "0")).join(" ")}。正式模型偏向小号的原因见"方法与局限"。</p>` : ""}
+    ${D.trend_next ? `<p class="muted" style="font-size:14px;margin:8px 0 0">走势模型（10 期均线：和值 ${D.trend_next.targets["和值"].toFixed(0)}，跨度 ${D.trend_next.targets["跨度"].toFixed(0)}，奇数 ${D.trend_next.targets["奇数个数"].toFixed(1)} 个，大号 ${D.trend_next.targets["大号个数"].toFixed(1)} 个）：正向 ${D.trend_next.picks.pos_red.map(n => String(n).padStart(2, "0")).join(" ")} + ${String(D.trend_next.picks.pos_blue).padStart(2, "0")}，反向排除 ${D.trend_next.picks.neg_red.map(n => String(n).padStart(2, "0")).join(" ")}。</p>` : ""}
     <div class="proof">生成时间 ${new Date(N.generated_at).toLocaleString("zh-CN")}，模型为逻辑回归（预注册），SHA-256 ${N.sha256}。
       <a href="${REPO}/commits/main/predictions/${N.issue}.json">在 GitHub 查看存档的提交时间</a></div>`;
 
@@ -270,6 +282,7 @@ function render(D) {
       <h3>蓝球</h3>
       <div class="balls blue">${ballGrid(last.blue_p, "blue", 1 / 16, [LP.pos_blue], LP.neg_blue, [last.blue])}</div>
       ${(() => { const c = (D.control_prospective || []).find(r => r.issue === last.issue && r.drawn); return c ? `<p class="muted" style="font-size:14px">对照模型这一期：正向红球命中 ${c.pos_hits} 个，蓝球${c.pos_blue_hit ? "命中" : "未中"}，反向误杀 ${c.neg_hits} 个。</p>` : ""; })()}
+      ${(() => { const c = (D.trend_prospective || []).find(r => r.issue === last.issue && r.drawn); return c ? `<p class="muted" style="font-size:14px">走势模型这一期：正向红球命中 ${c.pos_hits} 个，蓝球${c.pos_blue_hit ? "命中" : "未中"}，反向误杀 ${c.neg_hits} 个。</p>` : ""; })()}
       <p class="muted" style="font-size:13px;margin:0">单期结果主要取决于运气，判断模型是否有效要看下方前瞻记录的累计统计。</p>`;
   }
 
@@ -320,6 +333,8 @@ function render(D) {
   // 前瞻记录
   record(D.prospective, "#pro", "predictions");
   record(D.control_prospective || [], "#pro2", "predictions/control");
+  record(D.trend_prospective || [], "#pro3", "predictions/trend");
+  if (D.trend_series) trendSection(D.trend_series, D.trend_backtest);
 }
 
 function record(list, sel, dir) {
@@ -337,6 +352,23 @@ function record(list, sel, dir) {
       <td><div class="chips">${r.picks.neg_red.map(n => `<span class="chip ${r.drawn && r.reds.includes(n) ? "nr hit" : "dim"}">${n}</span>`).join("")}</div></td>
       <td>${r.drawn ? r.reds.join(" ") + " + " + r.blue : `<span class="muted">${zh(r.draw_date)}开奖</span>`}</td>
       <td class="num">${r.drawn ? r.pos_hits : ""}</td><td class="num">${r.drawn ? r.neg_hits : ""}</td><td>${r.drawn ? (r.pos_blue_hit ? "命中" : "未中") : ""}</td></tr>`).join("") + summary + "</tbody>";
+}
+
+function trendSection(T, bt) {
+  const names = Object.keys(T), methods = T[names[0]].rows.map(r => r.name).filter(n => n !== "理论均值");
+  $("#trs").innerHTML = `<thead><tr><th>方法</th>${names.map(n => `<th>${n}</th>`).join("")}</tr></thead><tbody>` +
+    methods.map(m => `<tr><td>${m}</td>${names.map(n => { const r = T[n].rows.find(x => x.name === m); return `<td class="num ${r.vs_mean_pct < 0 && r.p < 0.05 ? "sig" : ""}">${r.vs_mean_pct >= 0 ? "+" : ""}${r.vs_mean_pct.toFixed(1)}%</td>`; }).join("")}</tr>`).join("") +
+    `<tr><td>与上期相关系数</td>${names.map(n => `<td class="num">${T[n].ac[0].toFixed(3)}</td>`).join("")}</tr></tbody>`;
+  const base = T["和值"].rows.find(r => r.name === "理论均值");
+  $("#trn").innerHTML = `
+    <h3>为什么走势图"看起来很准"</h3>
+    <p>如果永远猜和值等于平均值 ${T["和值"].mu.toFixed(0)}，判断"下期比本期涨还是跌"的准确率高达 <b>${pct(base.dir_acc)}</b>。本期偏高，下期多半更低；本期偏低，下期多半更高。这不是走势在回调，而是每期都独立落在平均值附近。任何完全随机的序列都有这个特点，所以走势图上"高了会落、低了会弹"的现象，对选出具体号码没有帮助。</p>
+    ${bt ? `<h3>走势模型的历史回测（${fmt(bt.n)} 期）</h3>
+    <div class="verdict">
+      <div class="v"><b>${bt.pos.toFixed(3)} / 1.091</b><span>正向红球平均命中，模型对随机</span></div>
+      <div class="v"><b>${bt.neg.toFixed(3)} / 1.818</b><span>反向红球平均误杀，越少越好</span></div>
+      <div class="v"><b>${pct(bt.blue, 2)} / 6.25%</b><span>蓝球命中率，模型对随机</span></div>
+    </div>` : ""}`;
 }
 
 function jackpotChart(Y) {

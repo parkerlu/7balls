@@ -11,13 +11,14 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audit, backtest, fetch
+from . import audit, backtest, fetch, trend
 from .models import ML, NB, NR, Frequency, Uniform, load, matrices
 
 ROOT = Path(__file__).resolve().parent.parent
 PRED = ROOT / "predictions"
 CTRL = PRED / "control"   # 对照模型 (不含号码大小特征), 同样只存不改
 CONTROL = "ml_logreg_nonum"
+TREND_DIR = PRED / "trend"   # 走势模型 (均线目标), 同样只存不改
 DOCS = ROOT / "docs"
 OFFICIAL = "ml_logreg"   # 2003-2018 验证段选出的正式模型, 预注册后不再更改
 DRAW_WEEKDAYS = {1, 3, 6}  # 周二 周四 周日
@@ -63,6 +64,19 @@ def make_prediction(df, R, B, model=None, name=OFFICIAL) -> dict:
     }
     body["sha256"] = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
     return body, others
+
+
+def make_trend(df) -> dict:
+    reds = df[[f"r{i}" for i in range(1, 7)]].to_numpy()
+    pr, pb, tgt = trend.trend_predict(reds, df["blue"].to_numpy())
+    issue, date = next_draw(df["issue"].iloc[-1], df["date"].iloc[-1])
+    body = {"issue": issue, "draw_date": date,
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+            "data_through": df["issue"].iloc[-1], "model": "trend_ma10",
+            "targets": {k: round(v, 2) for k, v in tgt.items()},
+            "red": pr.round(5).tolist(), "blue": pb.round(5).tolist(), "picks": picks(pr, pb)}
+    body["sha256"] = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+    return body
 
 
 def archive(pred: dict, folder: Path = PRED) -> bool:
@@ -117,12 +131,17 @@ def main(refetch: bool = True) -> None:
     cpred, _ = make_prediction(df, R, B, ML("logreg", retrain=1, use_num=False), CONTROL)
     archive(cpred, CTRL)
     control = json.loads((CTRL / f"{cpred['issue']}.json").read_text())
+    tpred = make_trend(df)
+    archive(tpred, TREND_DIR)
+    trend_next = json.loads((TREND_DIR / f"{tpred['issue']}.json").read_text())
     recent = df.tail(20).iloc[::-1]
     data = {
         "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "meta": meta, "official": OFFICIAL,
         "next": current, "others": others, "control": CONTROL,
         "control_next": control, "control_prospective": score_archive(df, CTRL),
+        "trend_next": trend_next, "trend_prospective": score_archive(df, TREND_DIR),
+        "trend_backtest": trend.trend_backtest(), "trend_series": trend.run(),
         "backtest": results, "audit": aud,
         "prospective": score_archive(df),
         "recent": [{"issue": r["issue"], "date": r["date"],
